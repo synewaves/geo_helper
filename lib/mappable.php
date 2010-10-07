@@ -54,7 +54,7 @@ class GeoHelperMappable
       $to = GeoHelperLatLng::normalize($to);
       
       if ($from->equal($to)) {
-         return 0;
+         return 0.0;
       }
       
       $units = isset($options['units']) ? $options['units'] : GeoHelper::$default_units;
@@ -72,6 +72,8 @@ class GeoHelperMappable
          return sqrt(pow(self::unitsPerLatitudeDegree($units) * ($from->lat - $to->lat), 2) + 
                 pow(self::unitsPerLongitudeDegree($from->lat, $units) * ($from->lng - $to->lng), 2));
       }
+      
+      throw new InvalidArgumentException('Invalid calculation formula provided.');
    }
 
    /**
@@ -123,7 +125,7 @@ class GeoHelperMappable
       $start = GeoHelperLatLng::normalize($start);
       $lat = deg2rad($start->lat);
       $lng = deg2rad($start->lng);
-      $header = deg2rad($heading);
+      $heading = deg2rad($heading);
       
       $end_lat = asin(sin($lat) * cos($distance/$radius) +
                  cos($lat) * sin($distance/$radius) * cos($heading));
@@ -168,7 +170,9 @@ class GeoHelperMappable
     */
    public static function geocode($location, $options = array())
    {
-      $rc = GeoHelperMultiGeocoder::geocode($location, $options);
+      $api = new GeoHelperMultiGeocoder();
+            
+      $rc = $api->geocode($location, $options);
       if ($rc->success()) {
          return $rc;
       }
@@ -184,7 +188,7 @@ class GeoHelperMappable
     */
    protected static function toHeading($rad)
    {
-      return (rad2deg($rad) + 360) % 360;
+      return fmod((rad2deg($rad) + 360), 360);
    }
    
    /**
@@ -379,7 +383,7 @@ class GeoHelperLatLng extends GeoHelperMappable
       }
 
       // nothing worked
-      throw new Exception('Could not normalize argument into GeoHelperLatLng.');
+      throw new InvalidArgumentException('Could not normalize argument into GeoHelperLatLng.');
    }
    
    /**
@@ -424,22 +428,20 @@ class GeoHelperLatLng extends GeoHelperMappable
    /**
     * Reverse geocode the GeoHelperLatLng
     *
-    * Options available:
-    *
-    * <ul>
-    *   <li><b>using</b> <i>(string)</i>: Provider to use (default: GeoHelperMultiGeocoder)</li>
-    * </ul>
     * @param array $options options hash
     * @return GeoHelperLocation location if found
     */
    public function reverseGeocode($options = array())
    {
-      $default_options = array(
-         'using' => 'GeoHelperMultiGeocoder',
-      );
-      $options = array_merge($default_options, $options);
+      $api = new GeoHelperMultiGeocoder();
+            
+      $rc = $api->reverseGeocode($this, $options);
+      if ($rc->success()) {
+         return $rc;
+      }
       
-      return call_user_func(array($options['using'], 'reverseGeocode'), $this);
+      // all geocoders failed
+      throw new GeoHelperException();
    }
 }
 
@@ -586,7 +588,9 @@ class GeoHelperLocation extends GeoHelperLatLng
     */
    public function streetNumber()
    {
-      return preg_match('/(\d*)/', $this->street_address);
+      if (preg_match('/([0-9]+)/', $this->street_address, $matches)) {
+         return $matches[0];
+      }
    }
    
    /**
@@ -692,7 +696,7 @@ class GeoHelperBounds
    public function __construct($sw, $ne)
    {
       if (!($sw instanceof GeoHelperLatLng) || !($ne instanceof GeoHelperLatLng)) {
-         throw new Exception('Arguments must be instances of a GeoHelperLatLng class.');
+         throw new InvalidArgumentException('Arguments must be instances of a GeoHelperLatLng class.');
       }
       
       $this->sw = $sw;
@@ -719,12 +723,12 @@ class GeoHelperBounds
       $rc = $point->lat > $this->sw->lat && $point->lat < $this->ne->lat;
       
       if ($this->crossesMeridian()) {
-         $rc = $rc & ($point->lng < $this->ne->lng || $point->lng > $this->sw->lng);
+         $rc = $rc && ($point->lng < $this->ne->lng || $point->lng > $this->sw->lng);
       } else {
-         $rc = $rc & ($point->lng < $this->ne->lng && $point->lng > $this->sw->lng);
+         $rc = $rc && ($point->lng < $this->ne->lng && $point->lng > $this->sw->lng);
       }
       
-      return $rc;
+      return (bool) $rc;
    }
    
    /**
@@ -754,7 +758,7 @@ class GeoHelperBounds
     */
    public function toSpan()
    {
-      $lat_span = abs($this->ne->lat - $this->dw->lat);
+      $lat_span = abs($this->ne->lat - $this->sw->lat);
       $lng_span = abs($this->crossesMeridian() ? 360 + $this->ne->lng - $this->sw->lng : $this->ne->lng - $this->sw->lng);
       
       return new GeoHelperLatLng($lat_span, $lng_span);

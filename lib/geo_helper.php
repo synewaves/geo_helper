@@ -26,31 +26,6 @@ class GeoHelper
    public static $default_formula = 'sphere';
    
    /**
-    * Geocoder.us login information
-    * username:password
-    * @var string
-    */
-   public static $geocoder_us = null;
-   
-   /**
-    * Yahoo key
-    * @var string
-    */
-   public static $yahoo = null;
-   
-   /**
-    * Yahoo PlaceFinder app key
-    * @var string
-    */
-   public static $place_finder = null;
-   
-   /**
-    * Bing Maps API key
-    * @var string
-    */
-   public static $bing = null;
-   
-   /**
     * Multigeocoder provider order
     * @var array
     */

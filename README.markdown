@@ -15,13 +15,15 @@ Just about anything Geokit can do, minus the Rails specific helpers:
 Geocode an address:
 
     include_once 'geo_helper/init.php';
-    $rc = GeoHelperMultiGeocoder::geocode('100 Spear st, San Francisco, CA');
+    $api = new GeoHelperMultiGeocoder();
+    $rc = $api->geocode('100 Spear st, San Francisco, CA');
     echo $rc->ll()  // ll=latitude,longitude
 
 Find the address near a latitude/longitude (reverse geocoding):
 
     include_once 'geo_helper/init.php';
-    $rc = GeoHelperGoogleGeocoder::reverse_geocode(array('37.792821', '-122.393992'));
+    $api = new GeoHelperGoogleGeocoder();
+    $rc = $api->reverseGeocode(array('37.792821', '-122.393992'));
     echo $rc->fullAddress()
     >> 36-98 Mission St, San Francisco, CA 94105, USA
 
@@ -42,18 +44,19 @@ Test if a point is contained within bounds:
 Find distance to a second location with on-the-fly geocoding:
 
     include_once 'geo_helper/init.php';
-    $location = GeoHelperMultiGeocoder::geocode('100 Spear St, San Francisco, CA');
+    $api = new GeoHelperMultiGeocoder();
+    $location = $api->geocode('100 Spear St, San Francisco, CA');
     $distance = $location->distanceFrom('555 Battery St, San Francisco, CA');
    
 
-## Configuration:
+## Configuration
 
 To set the API keys for providers that require them:
 
-    GeoHelper::$geocoder_us = "username:password";
-    GeoHelper::$yahoo = "your_key";  // Yahoo v1
-    GeoHelper::$place_finder = "your_key";  // Yahoo v2
-    GeoHelper::$bing = "your_key";
+    GeoHelperGeocoderUsGeocoder::$key = "username:password";
+    GeoHelperYahooGeocoder::$key = "your_key";  // Yahoo v1
+    GeoHelperPlaceFinderGeocoder::$key = "your_key";  // Yahoo v2
+    GeoHelperBingGeocoder::$key = "your_key";
    
 To set the order of providers when using the `GeoHelperMultiGeocoder`:
 
@@ -62,6 +65,15 @@ To set the order of providers when using the `GeoHelperMultiGeocoder`:
    
     // valid keys are: GeoPlugin, HostIp
     GeoHelper::$ip_provider_order = array('GeoPlugin', 'HostIp');
+
+
+## Running the tests
+
+You'll need [PHPUnit 3.4+](http://www.phpunit.de/) installed to run the test suite.
+
+* Open `test/phpunit.xml.dist` and modify as needed.
+* Rename to `phpunit.xml`
+* Run `phpunit` from within `/test` directory.
 
 
 Copyright (c) 2010 Matthew Vince, released under the MIT license

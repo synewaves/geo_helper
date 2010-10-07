@@ -66,7 +66,7 @@ class GeoHelperGeocoder
     * @var mixed
     */
    public static $logger = null;
-   
+      
    /**
     * Accuracy map for translating between accuracy (string) and precision (integer)
     * @var array
@@ -85,11 +85,35 @@ class GeoHelperGeocoder
    );
    
    /**
+    * Geocode an address
+    * @param string $address address to geocode
+    * @param array $options options hash
+    * @return GeoHelperLocation Location object
+    */
+   public function geocode($address, $options = array())
+   {
+       // no geocode for this one
+       return new GeoHelperLocation();
+   }
+    
+   /**
+     * Reverse-geocode a lat long combination
+     * @param mixed $latlng LatLng object or string containing lat/lng information
+     * @param array $options options hash
+     * @return GeoHelperLocation Location object
+     */
+    public function reverseGeocode($latlng, $options = array())
+    {
+       // no reverse geocode for this one
+       return new GeoHelperLocation();
+    }  
+   
+   /**
     * Build full address from result (if it's not provided in response)
     * @param GeoHelperLocation $result location
     * @return string full address
     */
-   protected static function buildFullAddress($result)
+   protected function buildFullAddress($result)
    {
       $rc = '';
       
@@ -100,7 +124,7 @@ class GeoHelperGeocoder
          $rc .= $result->city . ', ';
       }
       if (trim($result->state) != '') {
-         $rc .= $result->state . ' ';
+         $rc .= $result->state . ', ';
       }
       if (trim($result->zip) != '') {
          $rc .= $result->zip . ', ';
@@ -117,8 +141,11 @@ class GeoHelperGeocoder
     * @param GeoHelperLocation $result location
     * @return string accuracy
     */
-   protected static function determineAccuracy($rc)
+   protected function determineAccuracy($rc)
    {
+      if (trim($rc->streetNumber()) != '') {
+         return 'address'; 
+      }
       if (trim($rc->street_address) != '') {
          return 'street';
       } elseif (trim($rc->zip) != '') {
@@ -127,6 +154,10 @@ class GeoHelperGeocoder
          return 'city';
       } elseif (trim($rc->state) != '') {
          return 'state';
+      } elseif (trim($rc->country_code != '')) {
+         return 'country';
+      } else {
+         return 'unknown';
       }
    }
    
@@ -135,7 +166,7 @@ class GeoHelperGeocoder
     * @param array $options options hash
     * @return string parameters
     */
-   protected static function buildParameterList($options)
+   protected function buildParameterList($options)
    {
       $opts = array();
       foreach ($options as $key => $value) {
@@ -155,7 +186,7 @@ class GeoHelperGeocoder
    protected static function log($message, $level = LOG_INFO)
    {
       if (self::$logger && is_callable(array(self::$logger, 'log'))) {
-         self::$logger($message, $level);
+         self::$logger->log($message, $level);
       }
    }
    
@@ -166,10 +197,10 @@ class GeoHelperGeocoder
     * @throws Exception if cURL library is not installed
     * @throws Exception on cURL error
     */
-   protected static function callGeocoderService($url)
+   protected function callWebService($url)
    {
       if (!function_exists('curl_init')) {
-         throw new GeoHelperException('The cURL library is not installed.');
+         throw new RuntimeException('The cURL library is not installed.');
       }
       
       $url_info = parse_url($url);
@@ -187,7 +218,7 @@ class GeoHelperGeocoder
          curl_setopt($curl, CURLOPT_PROXY, self::$proxy_address . ':' . self::$proxy_port);
          curl_setopt($curl, CURLOPT_PROXYUSERPWD, self::$proxy_user . ':' . self::$proxy_pass);
       }
-      
+
       // check for http auth:
       if (isset($url_info['user'])) {
          $user_name = $url_info['user'];
@@ -206,7 +237,7 @@ class GeoHelperGeocoder
       curl_close($curl);
       
       if (trim($error) != '') {
-         throw new GeoHelperException($error);
+         throw new Exception($error);
       }
       
       return $rc;
@@ -221,12 +252,19 @@ class GeoHelperGeocoder
 class GeoHelperGeocoderUsGeocoder extends GeoHelperGeocoder
 {
    /**
+    * Geocoder us key (optional) 'username:password'
+    * @var string
+    */
+   public static $key;
+   
+   
+   /**
     * Geocode an address
     * @param string $address address to geocode
     * @param array $options options hash
     * @return GeoHelperLocation Location object
     */
-   public static function geocode($address, $options = array())
+   public function geocode($address, $options = array())
    {
       $default_options = array(
          'address' => ($address instanceof GeoHelperLocation) ? $address->toGeocodableString() : $address,
@@ -235,15 +273,15 @@ class GeoHelperGeocoderUsGeocoder extends GeoHelperGeocoder
       $options = array_merge($default_options, $options);
       
       // check for login info
-      if (GeoHelper::$geocoder_us) {
-         $url = "http://" . GeoHelper::$geocoder_us . "@geocoder.us/member/service/namedcsv?%s";
+      if (self::$key) {
+         $url = "http://" . self::$key . "@geocoder.us/member/service/namedcsv?%s";
       } else {
          $url = "http://geocoder.us/service/namedcsv/?%s";
       }
       
       try {
-         $url = sprintf($url, self::buildParameterList($options));
-         $result = self::callGeocoderService($url);
+         $url = sprintf($url, $this->buildParameterList($options));
+         $result = $this->callWebService($url);
       } catch (Exception $e) {
          // error contacting service
          return new GeoHelperLocation();
@@ -251,19 +289,7 @@ class GeoHelperGeocoderUsGeocoder extends GeoHelperGeocoder
       
       self::log("Geocoder.us geocoding. Address: " . $address . ". Result: " . $result, LOG_INFO);
       
-      return self::parseResult($result);
-   }
-      
-   /**
-    * Reverse-geocode a lat long combination
-    * @param mixed $latlng LatLng object or string containing lat/lng information
-    * @param array $options options hash
-    * @return GeoHelperLocation Location object
-    */
-   public static function reverseGeocode($latlng, $options = array())
-   {
-      // no reverse geocode for this one
-      return new GeoHelperLocation();
+      return $this->parseResult($result);
    }
    
    /**
@@ -271,7 +297,7 @@ class GeoHelperGeocoderUsGeocoder extends GeoHelperGeocoder
     * @param string $result result body
     * @return GeoHelperLocation Parsed location data
     */
-   protected static function parseResult($result)
+   protected function parseResult($result)
    {
       $addresses = array_map('trim', explode("\n", $result));
       $original = array_shift($addresses);
@@ -284,7 +310,7 @@ class GeoHelperGeocoderUsGeocoder extends GeoHelperGeocoder
       $loc = null;
       foreach ($addresses as $address) {
          if (trim($address) != '') {
-            $result = self::extractResult($address);
+            $result = $this->extractResult($address);
             if (is_null($loc)) {
                // first iteration and main result
                $loc = $result;
@@ -304,7 +330,7 @@ class GeoHelperGeocoderUsGeocoder extends GeoHelperGeocoder
     * @param array $result response results
     * @return GeoHelperLocation porsed location data
     */
-   protected static function extractResult($result)
+   protected function extractResult($result)
    {
       $rc = new GeoHelperLocation();
       $rc->provider = 'geocoderus';
@@ -323,10 +349,10 @@ class GeoHelperGeocoderUsGeocoder extends GeoHelperGeocoder
       $rc->city = isset($parts['city']) ? $parts['city'] : null;
       $rc->state = isset($parts['state']) ? $parts['state'] : null;
       $rc->zip = isset($parts['zip']) ? $parts['zip'] : null;
-      // $rc->country_code
-      $rc->street_address = self::buildStreetAddress($parts);
-      $rc->full_address = self::buildFullAddress($rc);
-      $rc->accuracy = self::determineAccuracy($rc);
+      $rc->country_code = 'US';  // must be US with this service!
+      $rc->street_address = $this->buildStreetAddress($parts);
+      $rc->full_address = $this->buildFullAddress($rc);
+      $rc->accuracy = $this->determineAccuracy($rc);
       $rc->precision = array_search($rc->accuracy, self::$accuracy_map);
       
       $rc->success = true;
@@ -339,7 +365,7 @@ class GeoHelperGeocoderUsGeocoder extends GeoHelperGeocoder
     * @param array $parts named address parts
     * @return string street address
     */
-   protected static function buildStreetAddress($parts)
+   protected function buildStreetAddress($parts)
    {
       $rc = '';
       foreach (array('number', 'prefix', 'street', 'type', 'suffix') as $key) {
@@ -360,10 +386,10 @@ class GeoHelperGeocoderUsGeocoder extends GeoHelperGeocoder
 class GeoHelperYahooGeocoder extends GeoHelperGeocoder
 {
    /**
-    * Geocoder app id
+    * Yahoo key (required)
     * @var string
     */
-   protected static $geocoder_id = 'yahoo';
+   public static $key;
    
    
    /**
@@ -372,19 +398,18 @@ class GeoHelperYahooGeocoder extends GeoHelperGeocoder
     * @param array $options options hash
     * @return GeoHelperLocation Location object
     */
-   public static function geocode($address, $options = array())
+   public function geocode($address, $options = array())
    {
       $default_options = array(
          'location' => ($address instanceof GeoHelperLocation) ? $address->toGeocodableString() : $address,
-         'appid' => GeoHelper::$yahoo,
+         'appid' => self::$key,
          'output' => 'php',
       );
       $options = array_merge($default_options, $options);
       
-      
       try {
-         $url = sprintf('http://local.yahooapis.com/MapsService/V1/geocode?%s', self::buildParameterList($options));
-         $result = self::callGeocoderService($url);
+         $url = sprintf('http://local.yahooapis.com/MapsService/V1/geocode?%s', $this->buildParameterList($options));
+         $result = $this->callWebService($url);
       } catch (Exception $e) {
          // error contacting service
          return new GeoHelperLocation();
@@ -392,19 +417,7 @@ class GeoHelperYahooGeocoder extends GeoHelperGeocoder
       
       self::log("Yahoo geocoding. Address: " . $address . ". Result: " . $result, LOG_INFO);
       
-      return self::parseResult($result);
-   }
-      
-   /**
-    * Reverse-geocode a lat long combination
-    * @param mixed $latlng LatLng object or string containing lat/lng information
-    * @param array $options options hash
-    * @return GeoHelperLocation Location object
-    */
-   public static function reverseGeocode($latlng, $options = array())
-   {
-      // no reverse geocode for this one
-      return new GeoHelperLocation();
+      return $this->parseResult($result);
    }
    
    /**
@@ -412,7 +425,7 @@ class GeoHelperYahooGeocoder extends GeoHelperGeocoder
     * @param string $result PHP result
     * @return GeoHelperLocation Parsed location data
     */
-   protected static function parseResult($result)
+   protected function parseResult($result)
    {   
       $obj = unserialize($result);
       
@@ -431,7 +444,7 @@ class GeoHelperYahooGeocoder extends GeoHelperGeocoder
          $rc->state = isset($obj['State']) ? $obj['State'] : null;
          $rc->zip = isset($obj['Zip']) ? $obj['Zip'] : null;
          $rc->country_code = isset($obj['Country']) ? $obj['Country'] : null;
-         $rc->full_address = self::buildFullAddress($rc);
+         $rc->full_address = $this->buildFullAddress($rc);
          $rc->accuracy = isset($obj['precision']) ? $obj['precision'] : null;
          $rc->precision = array_search($rc->accuracy, self::$accuracy_map);
          
@@ -452,33 +465,42 @@ class GeoHelperYahooGeocoder extends GeoHelperGeocoder
 class GeoHelperPlaceFinderGeocoder extends GeoHelperGeocoder
 {
    /**
+    * Yahoo key (required)
+    * @var string
+    */
+   public static $key;
+   
+   
+   /**
     * Geocode an address
     * @param string $address address to geocode
     * @param array $options options hash
     * @return GeoHelperLocation Location object
     */
-   public static function geocode($address, $options = array())
+   public function geocode($address, $options = array())
    {
       $default_options = array(
          'location' => ($address instanceof GeoHelperLocation) ? $address->toGeocodableString() : $address,
          'locale' => null,
          'flags' => 'SXP',
          'gflags' => 'A',
-         'appid' => GeoHelper::$place_finder,
+         'appid' => self::$key,
       );
       $options = array_merge($default_options, $options);
       
       try {
-         $url = sprintf('http://where.yahooapis.com/geocode?%s', self::buildParameterList($options));
-         $result = self::callGeocoderService($url);
+         $url = sprintf('http://where.yahooapis.com/geocode?%s', $this->buildParameterList($options));
+         $result = $this->callWebService($url);
       } catch (Exception $e) {
          // error contacting service
          return new GeoHelperLocation();
       }
       
+      // print_r($result);
+      
       self::log("Yahoo PlaceFinder geocoding. Address: " . $address . ". Result: " . $result, LOG_INFO);
       
-      return self::parseResult($result);
+      return $this->parseResult($result);
    }
    
    /**
@@ -487,20 +509,20 @@ class GeoHelperPlaceFinderGeocoder extends GeoHelperGeocoder
     * @param array $options options hash
     * @return GeoHelperLocation Location object
     */
-   public static function reverseGeocode($latlng, $options = array())
+   public function reverseGeocode($latlng, $options = array())
    {
       $default_options = array(
          'location' => GeoHelperLatLng::normalize($latlng),
          'locale' => null,
          'flags' => 'SXP',
          'gflags' => 'AR',
-         'appid' => GeoHelper::$place_finder,
+         'appid' => self::$key,
       );
       $options = array_merge($default_options, $options);
       
       try {
-         $url = sprintf('http://where.yahooapis.com/geocode?%s', self::buildParameterList($options));
-         $result = self::callGeocoderService($url);
+         $url = sprintf('http://where.yahooapis.com/geocode?%s', $this->buildParameterList($options));
+         $result = $this->callWebService($url);
       } catch (Exception $e) {
          // error contacting service
          return new GeoHelperLocation();
@@ -508,15 +530,15 @@ class GeoHelperPlaceFinderGeocoder extends GeoHelperGeocoder
       
       self::log("Yahoo PlaceFinder reverse-geocoding. LL: " . $latlng . ". Result: " . $result, LOG_INFO);
       
-      return self::parseResult($result);
-   }   
+      return $this->parseResult($result);
+   }
    
    /**
     * Parse result (serialized PHP) into GeoHelperLocation
     * @param string $result serialized PHP
     * @return GeoHelperLocation Parsed location data
     */
-   protected static function parseResult($result)
+   protected function parseResult($result)
    {
       $obj = unserialize($result);
       
@@ -540,13 +562,9 @@ class GeoHelperPlaceFinderGeocoder extends GeoHelperGeocoder
             
             return $loc;
          }
-         else
-         {
-            // TODO: geocoding error
-         }
       }
    
-      // nothing found or error
+      // nothing found or geocoding error
       return new GeoHelperLocation();
    }
    
@@ -555,7 +573,7 @@ class GeoHelperPlaceFinderGeocoder extends GeoHelperGeocoder
     * @param array $result response results
     * @return GeoHelperLocation porsed location data
     */
-   protected static function extractResult($result)
+   protected function extractResult($result)
    {
       $rc = new GeoHelperLocation();
       $rc->provider = 'placefinder';
@@ -571,9 +589,9 @@ class GeoHelperPlaceFinderGeocoder extends GeoHelperGeocoder
       $rc->province = $result['county'];
       $rc->country = $result['country'];
       $rc->country_code = $result['countrycode'];
-      $rc->full_address = self::buildFullAddress($rc);
+      $rc->full_address = $this->buildFullAddress($rc);
       
-      $rc->accuracy = self::translatePrecision($result['quality']);
+      $rc->accuracy = $this->translatePrecision($result['quality']);
       $rc->precision = array_search($rc->accuracy, self::$accuracy_map);
       
       if (isset($result['boundingbox'])) {
@@ -600,29 +618,30 @@ class GeoHelperPlaceFinderGeocoder extends GeoHelperGeocoder
     * @param integer $precision precision
     * @return string accuracy
     */
-   protected static function translatePrecision($precision)
+   protected function translatePrecision($precision)
    {
+      $code = 0;
       if ($precision == 99) {
-         return 'building';
+         $code = 9;
       } elseif ($precision < 99 && $precision >= 84) {
-         return 'address';
+         $code = 8;
       } elseif ($precision <= 82 && $precision >= 80) {
-         return 'intersection';
+         $code = 7;
       } elseif ($precision <= 75 && $precision >= 70) {
-         return 'street';
+         $code = 6;
       } elseif ($precision <= 64 && $precision >= 59) {
-         return 'zip';
+         $code = 5;
       } elseif ($precision <= 50 && $precision >= 39) {
-         return 'city';
+         $code = 4;
       } elseif ($precision <= 30 && $precision >= 29) {
-         return 'county';
+         $code = 3;
       } elseif ($precision <= 20 && $precision >= 19) {
-         return 'state';
+         $code = 2;
       } elseif ($precision <= 10 && $precision >= 9) {
-         return 'country';
-      } else {
-         return 'unknown';
+         $code = 1;
       }
+      
+      return self::$accuracy_map[$code];
    }
 }
 
@@ -645,7 +664,7 @@ class GeoHelperGoogleGeocoder extends GeoHelperGeocoder
     * @param array $options options hash
     * @return GeoHelperLocation Location object
     */
-   public static function geocode($address, $options = array())
+   public function geocode($address, $options = array())
    {
       $default_options = array(
          'address' => $address,
@@ -657,15 +676,15 @@ class GeoHelperGoogleGeocoder extends GeoHelperGeocoder
       $options = array_merge($default_options, $options);
       
       if (!is_null($options['bounds']) && $options['bounds'] instanceof GeoHelperBounds) {
-         $options['bounds'] = $options['bounds']->ne->ll() . '|' . $options['bounds']->sw->ll();
+         $options['bounds'] = $options['bounds']->sw->ll() . '|' . $options['bounds']->ne->ll();
       }
       if ($options['address'] instanceof GeoHelperLocation) {
          $options['address'] = $options['address']->toGeocodableString();
       }
       
       try {
-         $url = sprintf('http://maps.google.com/maps/api/geocode/xml?%s', self::buildParameterList($options));
-         $result = self::callGeocoderService($url);
+         $url = sprintf('http://maps.googleapis.com/maps/api/geocode/xml?%s', $this->buildParameterList($options));
+         $result = $this->callWebService($url);
       } catch (Exception $e) {
          // error contacting service
          return new GeoHelperLocation();
@@ -673,7 +692,7 @@ class GeoHelperGoogleGeocoder extends GeoHelperGeocoder
       
       self::log("Google geocoding. Address: " . $address . ". Result: " . $result, LOG_INFO);
       
-      return self::xml2GeoHelperLocation($result);
+      return $this->xml2GeoHelperLocation($result);
    }
 
    /**
@@ -682,20 +701,19 @@ class GeoHelperGoogleGeocoder extends GeoHelperGeocoder
     * @param array $options options hash
     * @return GeoHelperLocation Location object
     */
-   public static function reverseGeocode($latlng, $options = array())
+   public function reverseGeocode($latlng, $options = array())
    {
       $default_options = array(
          'latlng' => GeoHelperLatLng::normalize($latlng),
          'language' => 'en',
          'region' => null,
-         'bounds' => null,
          'sensor' => 'false',
       );
       $options = array_merge($default_options, $options);
       
       try {
-         $url = sprintf('http://maps.google.com/maps/api/geocode/xml?%s', self::buildParameterList($options));
-         $result = self::callGeocoderService($url);
+         $url = sprintf('http://maps.googleapis.com/maps/api/geocode/xml?%s', $this->buildParameterList($options));
+         $result = $this->callWebService($url);
       } catch (Exception $e) {
          // error contacting service
          return new GeoHelperLocation();
@@ -703,7 +721,7 @@ class GeoHelperGoogleGeocoder extends GeoHelperGeocoder
       
       self::log("Google reverse-geocoding. LL: " . $latlng->ll() . ". Result: " . $result, LOG_INFO);
       
-      return self::xml2GeoHelperLocation($result);
+      return $this->xml2GeoHelperLocation($result);
    }
    
    /**
@@ -711,7 +729,7 @@ class GeoHelperGoogleGeocoder extends GeoHelperGeocoder
     * @param string $xml XML body
     * @return GeoHelperLocation Parsed location data
     */
-   protected static function xml2GeoHelperLocation($xml)
+   protected function xml2GeoHelperLocation($xml)
    {
       $doc = new SimpleXMLElement($xml);
       $status = (string) $doc->status;
@@ -722,7 +740,7 @@ class GeoHelperGoogleGeocoder extends GeoHelperGeocoder
          // grab them all
          $loc = null;
          foreach ($doc->result as $result) {
-            $result = self::extractResult($result);
+            $result = $this->extractResult($result);
             if (is_null($loc)) {
                // first iteration and main result
                $loc = $result;
@@ -752,7 +770,7 @@ class GeoHelperGoogleGeocoder extends GeoHelperGeocoder
     * @param SimpleXmlElement $elm XML element
     * @return GeoHelperLocation porsed location data
     */
-   protected static function extractResult($result)
+   protected function extractResult($result)
    {
       $rc = new GeoHelperLocation();
       
@@ -805,16 +823,16 @@ class GeoHelperGoogleGeocoder extends GeoHelperGeocoder
       }
       
       if (isset($result->geometry->viewport)) {
-         $ne = new GeoHelperLatLng(
-            (string) $result->geometry->viewport->northeast->lat,
-            (string) $result->geometry->viewport->northeast->lng
-         );
          $sw = new GeoHelperLatLng(
             (string) $result->geometry->viewport->southwest->lat,
             (string) $result->geometry->viewport->southwest->lng
          );
+         $ne = new GeoHelperLatLng(
+            (string) $result->geometry->viewport->northeast->lat,
+            (string) $result->geometry->viewport->northeast->lng
+         );
          
-         $rc->suggested_bounds = new GeoHelperBounds($ne, $sw);
+         $rc->suggested_bounds = new GeoHelperBounds($sw, $ne);
       }
       
       $rc->success = true;
@@ -831,23 +849,30 @@ class GeoHelperGoogleGeocoder extends GeoHelperGeocoder
 class GeoHelperBingGeocoder extends GeoHelperGeocoder
 {
    /**
+    * Bing API key (required)
+    * @var string
+    */
+   public static $key;
+   
+   
+   /**
     * Geocode an address
     * @param string $address address to geocode
     * @param array $options options hash
     * @return GeoHelperLocation Location object
     */
-   public static function geocode($address, $options = array())
+   public function geocode($address, $options = array())
    {
       $default_options = array(
          'query' => ($address instanceof GeoHelperLocation) ? $address->toGeocodableString() : $address,
          'output' => 'xml',
-         'key' => GeoHelper::$bing,
+         'key' => self::$key,
       );
       $options = array_merge($default_options, $options);
             
       try {
-         $url = sprintf('http://dev.virtualearth.net/REST/v1/Locations?%s', self::buildParameterList($options));
-         $result = self::callGeocoderService($url);
+         $url = sprintf('http://dev.virtualearth.net/REST/v1/Locations?%s', $this->buildParameterList($options));
+         $result = $this->callWebService($url);
       } catch (Exception $e) {
          // error contacting service
          return new GeoHelperLocation();
@@ -855,7 +880,7 @@ class GeoHelperBingGeocoder extends GeoHelperGeocoder
       
       self::log("Bing geocoding. Address: " . $address . ". Result: " . $result, LOG_INFO);
       
-      return self::parseXml($result);
+      return $this->parseXml($result);
    }
    
    /**
@@ -864,12 +889,12 @@ class GeoHelperBingGeocoder extends GeoHelperGeocoder
     * @param array $options options hash
     * @return GeoHelperLocation Location object
     */
-   public static function reverseGeocode($latlng, $options = array())
+   public function reverseGeocode($latlng, $options = array())
    {
       $default_options = array(
          'point' => GeoHelperLatLng::normalize($latlng),
          'output' => 'xml',
-         'key' => GeoHelper::$bing,
+         'key' => self::$key,
       );
       $options = array_merge($default_options, $options);
 
@@ -877,8 +902,8 @@ class GeoHelperBingGeocoder extends GeoHelperGeocoder
          $point = rawurlencode($options['point']);
          unset($options['point']);
          
-         $url = sprintf('http://dev.virtualearth.net/REST/v1/Locations/%s/?%s', $point, self::buildParameterList($options));
-         $result = self::callGeocoderService($url);
+         $url = sprintf('http://dev.virtualearth.net/REST/v1/Locations/%s/?%s', $point, $this->buildParameterList($options));
+         $result = $this->callWebService($url);
       } catch (Exception $e) {
          // error contacting service
          return new GeoHelperLocation();
@@ -886,7 +911,7 @@ class GeoHelperBingGeocoder extends GeoHelperGeocoder
       
       self::log("Bing reverse-geocoding. LL: " . $latlng . ". Result: " . $result, LOG_INFO);
       
-      return self::parseXml($result);
+      return $this->parseXml($result);
    }
    
    /**
@@ -894,7 +919,7 @@ class GeoHelperBingGeocoder extends GeoHelperGeocoder
     * @param string $xml XML doc
     * @return GeoHelperLocation parsed location
     */
-   protected static function parseXml($xml)
+   protected function parseXml($xml)
    {
       $doc = new SimpleXmlElement($xml);
       $status = (string) $doc->StatusCode;
@@ -905,7 +930,7 @@ class GeoHelperBingGeocoder extends GeoHelperGeocoder
          // grab them all
          $loc = null;
          foreach ($doc->ResourceSets->ResourceSet->Resources->Location as $location) {
-            $result = self::extractResult($location);
+            $result = $this->extractResult($location);
             if (is_null($loc)) {
                // first iteration and main result
                $loc = $result;
@@ -930,7 +955,7 @@ class GeoHelperBingGeocoder extends GeoHelperGeocoder
     * @param SimpleXmlElement $elm XML element
     * @return GeoHelperLocation porsed location data
     */
-   protected static function extractResult($result)
+   protected function extractResult($result)
    {
       $rc = new GeoHelperLocation();
       $rc->provider = 'bing';
@@ -947,7 +972,7 @@ class GeoHelperBingGeocoder extends GeoHelperGeocoder
       $rc->full_address = isset($result->Address->FormattedAddress) ? (string) $result->Address->FormattedAddress : null;
       $rc->country = isset($result->Address->CountryRegion) ? (string) $result->Address->CountryRegion : null;
       
-      $rc->accuracy = self::determineAccuracy($rc);
+      $rc->accuracy = $this->determineAccuracy($rc);
       $rc->precision = array_search($rc->accuracy, self::$accuracy_map);
       
       if (isset($result->BoundingBox)) {
@@ -982,9 +1007,10 @@ class GeoHelperGeoPluginGeocoder extends GeoHelperGeocoder
     * @param array $options options hash
     * @return GeoHelperLocation Location object
     */
-   public static function geocode($ip, $options = array())
+   public function geocode($ip, $options = array())
    {
       if (!preg_match('/^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})?$/', $ip)) {
+         // TODO: validate local ips to auto skip?
          return new GeoHelperLocation();
       }
       
@@ -992,11 +1018,10 @@ class GeoHelperGeoPluginGeocoder extends GeoHelperGeocoder
          'ip' => $ip,
       );
       $options = array_merge($default_options, $options);
-            
       
       try {
-         $url = sprintf('http://www.geoplugin.net/xml.gp?%s', self::buildParameterList($options));
-         $result = self::callGeocoderService($url);
+         $url = sprintf('http://www.geoplugin.net/xml.gp?%s', $this->buildParameterList($options));
+         $result = $this->callWebService($url);
       } catch (Exception $e) {
          // error contacting service
          return new GeoHelperLocation();
@@ -1004,7 +1029,7 @@ class GeoHelperGeoPluginGeocoder extends GeoHelperGeocoder
       
       self::log("Geoplugin geocoding. IP: " . $ip . ". Result: " . $result, LOG_INFO);
       
-      return self::parseXml($result);
+      return $this->parseXml($result);
    }
    
    /**
@@ -1013,7 +1038,7 @@ class GeoHelperGeoPluginGeocoder extends GeoHelperGeocoder
     * @param array $options options hash
     * @return GeoHelperLocation Location object
     */
-   public static function reverseGeocode($latlng, $options = array())
+   public function reverseGeocode($latlng, $options = array())
    {
       $latlng = GeoHelperLatLng::normalize($latlng);
       $default_options = array(
@@ -1024,8 +1049,8 @@ class GeoHelperGeoPluginGeocoder extends GeoHelperGeocoder
       $options = array_merge($default_options, $options);
       
       try {
-         $url = sprintf('http://www.geoplugin.net/extras/location.gp?%s', self::buildParameterList($options));
-         $result = self::callGeocoderService($url);
+         $url = sprintf('http://www.geoplugin.net/extras/location.gp?%s', $this->buildParameterList($options));
+         $result = $this->callWebService($url);
       } catch (Exception $e) {
          // error contacting service
          return new GeoHelperLocation();
@@ -1033,7 +1058,7 @@ class GeoHelperGeoPluginGeocoder extends GeoHelperGeocoder
       
       self::log("Geoplugin reverse-geocoding. LL: " . $latlng . ". Result: " . $result, LOG_INFO);
       
-      return self::parseXml($result);
+      return $this->parseXml($result);
    }
    
    /**
@@ -1041,7 +1066,7 @@ class GeoHelperGeoPluginGeocoder extends GeoHelperGeocoder
     * @param string $xml XML doc
     * @return GeoHelperLocation parsed location
     */
-   protected static function parseXml($xml)
+   protected function parseXml($xml)
    {
       $doc = new SimpleXmlElement($xml);
       
@@ -1054,11 +1079,19 @@ class GeoHelperGeoPluginGeocoder extends GeoHelperGeocoder
       } elseif (isset($doc->geoplugin_place)) {
          $rc->city = (string) $doc->geoplugin_place;
       }
-      $rc->state = isset($doc->geoplugin_region) ? (string) $doc->geoplugin_region : null;
+      
+      // reverse geocode state is in regionAbbreviated
+      if (isset($doc->geoplugin_regionAbbreviated)) {
+         $rc->state = (string) $doc->geoplugin_regionAbbreviated;
+      } elseif (isset($doc->geoplugin_regionCode)) {
+         $rc->state = (string) $doc->geoplugin_regionCode;
+      }
+      
       $rc->country = isset($doc->geoplugin_countryName) ? (string) $doc->geoplugin_countryName : null;
       $rc->country_code = isset($doc->geoplugin_countryCode) ? (string) $doc->geoplugin_countryCode : null;
       $rc->lat = isset($doc->geoplugin_latitude) ? (float) $doc->geoplugin_latitude : null;
       $rc->lng = isset($doc->geoplugin_longitude) ? (float) $doc->geoplugin_longitude : null;
+      $rc->full_address = $this->buildFullAddress($rc);
 
       if (!is_null($rc->city) && trim($rc->city) != '') {
          $rc->accuracy = 'city';
@@ -1084,7 +1117,7 @@ class GeoHelperHostIpGeocoder extends GeoHelperGeocoder
     * @param array $options options hash
     * @return GeoHelperLocation Location object
     */
-   public static function geocode($ip, $options = array())
+   public function geocode($ip, $options = array())
    {
       if (!preg_match('/^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})?$/', $ip)) {
          // TODO: validate local ips to auto skip?
@@ -1098,8 +1131,8 @@ class GeoHelperHostIpGeocoder extends GeoHelperGeocoder
       $options = array_merge($default_options, $options);
       
       try {
-         $url = sprintf('http://api.hostip.info/?%s', self::buildParameterList($options));
-         $result = self::callGeocoderService($url);
+         $url = sprintf('http://api.hostip.info/?%s', $this->buildParameterList($options));
+         $result = $this->callWebService($url);
       } catch (Exception $e) {
          // error contacting service
          return new GeoHelperLocation();
@@ -1107,19 +1140,7 @@ class GeoHelperHostIpGeocoder extends GeoHelperGeocoder
       
       self::log("Hostip geocoding. IP: " . $ip . ". Result: " . $result, LOG_INFO);
       
-      return self::parseXml($result);
-   }
-   
-   /**
-    * Reverse-geocode a lat long combination
-    * @param mixed $latlng LatLng object or string containing lat/lng information
-    * @param array $options options hash
-    * @return GeoHelperLocation Location object
-    */
-   public static function reverseGeocode($latlng, $options = array())
-   {
-      // no reverse geocode for this one
-      return new GeoHelperLocation();
+      return $this->parseXml($result);
    }
    
    /**
@@ -1127,7 +1148,7 @@ class GeoHelperHostIpGeocoder extends GeoHelperGeocoder
     * @param string $xml response xml
     * @return GeoHelperLocation parsed location
     */
-   protected static function parseXml($xml)
+   protected function parseXml($xml)
    {
       // load fixing namespace issue: http://bugs.php.net/bug.php?id=48049
       $doc = new SimpleXmlElement(str_replace(':', '_', $xml));
@@ -1135,14 +1156,14 @@ class GeoHelperHostIpGeocoder extends GeoHelperGeocoder
       $rc = new GeoHelperLocation();
       $rc->provider = 'hostip';
       
-      if (!isset($doc->gml_featureMember->Hostip)) {
-         // nothing here
-         return $rc;
-      }
-      
       $doc = $doc->gml_featureMember->Hostip;
       
       if (isset($doc->gml_name)) {
+         if (substr((string) $doc->gml_name, 0, 1) == '(') {
+            // error geocoding
+            return $rc;
+         }
+
          list($rc->city, $rc->state) = array_map('trim', explode(', ', (string) $doc->gml_name));
       }
       
@@ -1150,8 +1171,10 @@ class GeoHelperHostIpGeocoder extends GeoHelperGeocoder
       $rc->country_code = isset($doc->countryAbbrev) ? (string) $doc->countryAbbrev : null;
       
       if (isset($doc->ipLocation->gml_pointProperty->gml_Point->gml_coordinates)) {
-         list($rc->lat, $rc->lng) = array_map('trim', explode(',', $doc->ipLocation->gml_pointProperty->gml_Point->gml_coordinates));
+         list($rc->lng, $rc->lat) = array_map('trim', explode(',', $doc->ipLocation->gml_pointProperty->gml_Point->gml_coordinates));
       }
+      
+      $rc->full_address = $this->buildFullAddress($rc);
       
       if (!is_null($rc->city) && trim($rc->city) != '') {
          $rc->accuracy = 'city';
@@ -1179,14 +1202,16 @@ class GeoHelperMultiGeocoder extends GeoHelperGeocoder
     * @param array $options options hash
     * @return GeoHelperLocation Location object
     */
-   public static function geocode($address, $options = array())
+   public function geocode($address, $options = array())
    {
-      $geocoding_ip = preg_match('/^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/', $address);
-      $order = $geocoding_ip ? GeoHelper::$ip_provider_order : GeoHelper::$provider_order;
+      $is_ip_geocoding = preg_match('/^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/', $address);
+      $order = $is_ip_geocoding ? GeoHelper::$ip_provider_order : GeoHelper::$provider_order;
       
       foreach ($order as $provider) {
+         $provider = 'GeoHelper' . $provider . 'Geocoder';
          try {
-            $rc = call_user_func(array('GeoHelper' . $provider . 'Geocoder', 'geocode'), $address, $options);
+            $api = new $provider();
+            $rc = $api->geocode($address, $options);
             if ($rc->success()) {
                return $rc;
             }
@@ -1205,11 +1230,13 @@ class GeoHelperMultiGeocoder extends GeoHelperGeocoder
     * @param array $options options hash
     * @return GeoHelperLocation Location object
     */
-   public static function reverseGeocode($latlng, $options = array())
+   public function reverseGeocode($latlng, $options = array())
    {
       foreach (GeoHelper::$provider_order as $provider) {
+         $provider = 'GeoHelper' . $provider . 'Geocoder';
          try {
-            $rc = call_user_func(array('GeoHelper' . $provider . 'Geocoder', 'reverseGeocode'), $latlng, $options);
+            $api = new $provider();
+            $rc = $api->reverseGeocode($latlng, $options);
             if ($rc->success()) {
                return $rc;
             }
