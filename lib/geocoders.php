@@ -719,7 +719,7 @@ class GeoHelperGoogleGeocoder extends GeoHelperGeocoder
          return new GeoHelperLocation();
       }
       
-      self::log("Google reverse-geocoding. LL: " . $latlng->ll() . ". Result: " . $result, LOG_INFO);
+      self::log("Google reverse-geocoding. LL: " . $options['latlng']->ll() . ". Result: " . $result, LOG_INFO);
       
       return $this->xml2GeoHelperLocation($result);
    }
