@@ -785,7 +785,7 @@ class GeoHelperGoogleGeocoder extends GeoHelperGeocoder
          'ROOFTOP' => 9,
          'RANGE_INTERPOLATED' => 8,
          'GEOMETRIC_CENTER' => 5,
-         'APPROXIMATE' => 4,
+         'APPROXIMATE' => 2,
       );
 
       // address parts
