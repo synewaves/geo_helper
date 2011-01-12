@@ -814,8 +814,18 @@ class GeoHelperGoogleGeocoder extends GeoHelperGeocoder
             $rc->street_address = trim(implode(' ', array($street_number, $street_name)));
          }
       }
-
-      $rc->precision = $precision_map[(string) $result->geometry->location_type];
+      
+      // get first returned type (for more specific precision matching):
+      $type = isset($result->type) ? (string) $result->type : '';
+      switch (strtolower($type)) {
+      	case 'administrative_area_level_2':
+      		$rc->precision = 3; // county/parish
+	      	break;
+	      default:
+	      	$rc->precision = $precision_map[(string) $result->geometry->location_type];
+	      	break;
+      }
+      
       $rc->accuracy = self::$accuracy_map[$rc->precision];
       if ($street_name && $rc->accuracy == 'city') {
          $rc->accuracy = 'street';
