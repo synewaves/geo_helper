@@ -543,8 +543,10 @@ class GeoHelperPlaceFinderGeocoder extends GeoHelperGeocoder
       $obj = unserialize($result);
       
       if (isset($obj['ResultSet'])) {
-         if (isset($obj['ResultSet']['Error']) && $obj['ResultSet']['Error'] == 0)
-         {
+         if (isset($obj['ResultSet']['Error']) 
+             && $obj['ResultSet']['Error'] == 0
+             && $obj['ResultSet']['Found'] > 0
+        ) {
             // placefinder may return 0 or more results in result elements
             // grab them all
             $loc = null;

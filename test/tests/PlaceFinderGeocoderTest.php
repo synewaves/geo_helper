@@ -38,6 +38,10 @@ EOT;
 a:1:{s:9:"ResultSet";a:6:{s:7:"version";s:3:"1.0";s:5:"Error";i:100;s:12:"ErrorMessage";s:22:"No location parameters";s:6:"Locale";s:5:"us_US";s:7:"Quality";i:0;s:5:"Found";i:0;}}
 EOT;
 
+   const PLACE_FINDER_EMPTY = <<<EOT
+a:1:{s:9:"ResultSet";a:6:{s:7:"version";s:3:"1.0";s:5:"Error";i:0;s:12:"ErrorMessage";s:8:"No error";s:6:"Locale";s:5:"us_US";s:7:"Quality";i:10;s:5:"Found";i:0;}}
+EOT;
+   
    public function setup()
    {
       parent::setup();
@@ -145,6 +149,16 @@ EOT;
       $api->expects($this->once())->method('callWebService')->will($this->throwException(new Exception));
       
       $location = $api->reverseGeocode($this->latlng);
+      $this->assertFalse($location->success());
+   }
+   
+   public function testNotFoundError()
+   {
+      $api = $this->getMock('GeoHelperPlaceFinderGeocoder', array('callWebService'));
+      $api->expects($this->once())->method('callWebService')->will($this->returnValue(self::PLACE_FINDER_EMPTY));
+      
+      $location = $api->geocode('some missed address');
+      
       $this->assertFalse($location->success());
    }
    
